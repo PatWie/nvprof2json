@@ -1,0 +1,58 @@
+---
+kind: pipeline
+name: default
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: fmt
+  pull: default
+  image: patwie/goimports:v1
+  commands:
+  - "[ 0 -eq `goimports -l . | wc -l` ]"
+
+# - name: lint
+#   image: golangci/golangci-lint:v1.16
+#   pull: true
+#   commands:
+#     - golangci-lint run
+
+- name: build
+  pull: default
+  image: golang
+  commands:
+  - go version
+  - go build
+
+  environment:
+    GOPROXY: https://gomods.patwie.com/
+
+
+- name: create_release
+  pull: default
+  image: patwie/tar
+  commands:
+    - tar -czvf nvprof2json.tar.gz README.md LICENSE nvprof2json
+
+- name: publish_release
+  image: plugins/github-release
+  settings:
+    api_key:
+      from_secret: github_token
+    files:
+      - nvprof2json.tar.gz
+    checksum:
+      - md5
+      - sha256
+  when:
+    event: tag
+
+
+
+---
+kind: signature
+hmac: 76a93221746115caa02225eb72eaf66efde1357571382ad7f93aa8eade2b7360
+
+...
