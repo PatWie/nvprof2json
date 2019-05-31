@@ -188,10 +188,10 @@ func GetConcurrentKernelEvents(db *sqlx.DB) []*Event {
 		event.Args["RegistersPerThread"] = fmt.Sprintf("%v", activity.RegistersPerThread)
 		events = append(events, event)
 
-		computeEvent := event.Copy()
-		computeEvent.PID = "Compute"
-		computeEvent.TID = event.Name
-		events = append(events, computeEvent)
+		// computeEvent := event.Copy()
+		// computeEvent.PID = "Compute"
+		// computeEvent.TID = fmt.Sprintf("[%v:%v] %s", activity.DeviceID, activity.ContextID, event.Name)
+		// events = append(events, computeEvent)
 
 		streamEvent := event.Copy()
 		streamEvent.PID = "Streams"
