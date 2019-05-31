@@ -17,14 +17,14 @@ type CuptiActivityKindRuntime struct {
 }
 
 // type CuptiActivityKindMarker struct {
-// 	Key        int64  `db:"_id_"`
-// 	Flags      int64  `db:"flags"`
-// 	Timestamp  int64  `db:"timestamp"`
-// 	ID         int64  `db:"id"`
-// 	ObjectKind int64  `db:"objectKind"`
-// 	ObjectID   []byte `db:"objectId"`
-// 	Name       int64  `db:"name"`
-// 	Domain     int64  `db:"domain"`
+//  Key        int64  `db:"_id_"`
+//  Flags      int64  `db:"flags"`
+//  Timestamp  int64  `db:"timestamp"`
+//  ID         int64  `db:"id"`
+//  ObjectKind int64  `db:"objectKind"`
+//  ObjectID   []byte `db:"objectId"`
+//  Name       int64  `db:"name"`
+//  Domain     int64  `db:"domain"`
 // }
 
 type CuptiActivityKindMemcpy struct {
@@ -108,6 +108,7 @@ type CuptiActivityKindConcurrentKernel struct {
 	LaunchType                      int64  `db:"launchType"`
 	IsSharedMemoryCarveoutRequested int64  `db:"isSharedMemoryCarveoutRequested"`
 	SharedMemoryCarveoutRequested   int64  `db:"sharedMemoryCarveoutRequested"`
+	SharedMemoryExecuted            int64  `db:"sharedMemoryExecuted"`
 }
 
 type CuptiActivityKindSynchronization struct {

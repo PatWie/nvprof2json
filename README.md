@@ -11,4 +11,4 @@ nvprof2json main.nvvp -o main-events.json
 
 Point the Chrome browsers to `chrome://tracing/` and load `main-events.json`
 
-<p align="center"> <img src="./screenshot.png" /> </p>
+<p align="center"> <img src="./screenshot.gif" /> </p>

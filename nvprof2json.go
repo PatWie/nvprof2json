@@ -20,6 +20,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
+	"strings"
+
+	"path/filepath"
 
 	"github.com/ianlancetaylor/demangle"
 	flags "github.com/jessevdk/go-flags"
@@ -184,6 +188,16 @@ func GetConcurrentKernelEvents(db *sqlx.DB) []*Event {
 		event.Args["RegistersPerThread"] = fmt.Sprintf("%v", activity.RegistersPerThread)
 		events = append(events, event)
 
+		computeEvent := event.Copy()
+		computeEvent.PID = "Compute"
+		computeEvent.TID = event.Name
+		events = append(events, computeEvent)
+
+		streamEvent := event.Copy()
+		streamEvent.PID = "Streams"
+		streamEvent.TID = fmt.Sprintf("Stream %v", activity.StreamID)
+		events = append(events, streamEvent)
+
 	}
 
 	return events
@@ -206,7 +220,7 @@ func GetSynchronizationEvents(db *sqlx.DB) []*Event {
 		event.Duration = activity.End - activity.Start
 
 		event.TID = "Synchronize"
-		event.PID = fmt.Sprintf("Stream %v", activity.StreamID)
+		event.PID = "Synchronization"
 
 		event.Args["CudaEventID"] = fmt.Sprintf("%v", activity.CudaEventID)
 		events = append(events, event)
@@ -218,13 +232,27 @@ func GetSynchronizationEvents(db *sqlx.DB) []*Event {
 func main() {
 
 	var opts struct {
-		OutputFile string `short:"o" long:"output" default:"events.json" description:"output file for Chrome" required:"false" name:"output file"`
+		OutputFile string `short:"o" long:"output" default:"[nvvpfile].json" description:"output file for Chrome" required:"false" name:"output file"`
+		Override   bool   `short:"f"  description:"override output file if exists" required:"false" name:"override"`
 		Args       struct {
 			NVVPFile string `positional-arg-name:"nvvpfile" description:"output from nvprof, e.g., 'nvprof -o main.nvvp ./main'"`
 		} `positional-args:"true" required:"1"`
 	}
 	_, err := flags.Parse(&opts)
 	if err == nil {
+		if _, err := os.Stat(opts.Args.NVVPFile); os.IsNotExist(err) {
+			log.Fatalln(err)
+		}
+
+		if opts.OutputFile == "[nvvpfile].json" {
+			opts.OutputFile = fmt.Sprintf("%s.json", strings.TrimSuffix(filepath.Base(opts.Args.NVVPFile), filepath.Ext(opts.Args.NVVPFile)))
+		}
+
+		if _, err := os.Stat(opts.OutputFile); !os.IsNotExist(err) {
+			if !opts.Override {
+				log.Fatalln(fmt.Sprintf("file %s already exists use -f to override", opts.OutputFile))
+			}
+		}
 
 		db, err := sqlx.Connect("sqlite3", opts.Args.NVVPFile)
 		if err != nil {
@@ -234,7 +262,7 @@ func main() {
 		stringTable := []StringTable{}
 		err = db.Select(&stringTable, "SELECT _id_ as id, value FROM StringTable")
 		if err != nil {
-			panic(err)
+			log.Fatalln(err)
 		}
 
 		for _, p := range stringTable {
@@ -251,7 +279,7 @@ func main() {
 
 		err = db.Select(&info.Meta.Devices, "SELECT * FROM CUPTI_ACTIVITY_KIND_DEVICE")
 		if err != nil {
-			panic(err)
+			log.Fatalln(err)
 		}
 
 		// runtime events
