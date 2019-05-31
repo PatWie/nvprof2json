@@ -20,3 +20,10 @@
 
 cuda-trace
 nvprof2json
+*.json
+*.nvvp
+*.py
+dummy/
+*.png
+*.gif
+*.jpg

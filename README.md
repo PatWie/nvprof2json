@@ -16,19 +16,20 @@ Point the Chrome browsers to `chrome://tracing/` and load `main.json`
 
 
 ```
-./nvprof2json --help
 Usage:
-  nvprof2json [OPTIONS] nvvpfile
+  nvprof2json [OPTIONS] file
 
 Application Options:
-  -o, --output=   output file for Chrome (default: [nvvpfile].json)
-  -f              override output file if exists
+  -o, --output=  output file for Chrome tracing (default: [nvvpfile].json)
+  -v, --verbose  verbose logging
+  -p, --pretty   ident and prettify JSON output
+  -f             override output file if exists
 
 Help Options:
-  -h, --help      Show this help message
+  -h, --help     Show this help message
 
 Arguments:
-  nvvpfile:       output from nvprof, e.g., 'nvprof -o main.nvvp ./main'
+  file:          output from nvprof, e.g., 'nvprof -o [file] [your-app]'
 
 ```
 

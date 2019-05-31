@@ -544,7 +544,7 @@ var CbidTable = map[int64]string{
 	0x7ffffff: "FORCE_INT",
 }
 
-// ActivitySynchronizationType
+// CUpti_ActivitySynchronizationType
 var ActivitySynchronizationType = map[int64]string{
 	0:         "Unknown data",
 	1:         "Event synchronize API",
@@ -581,7 +581,7 @@ var ActivityMemoryKind = map[int64]string{
 	7: "managed static",
 }
 
-func ParseMap(needle int64, haystack map[int64]string) string {
+func FindInMap(needle int64, haystack map[int64]string) string {
 	result := fmt.Sprintf("<not found %v>", needle)
 	if val, ok := haystack[needle]; ok {
 		result = val

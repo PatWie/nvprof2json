@@ -19,16 +19,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
-	"strings"
-
 	"path/filepath"
+	"strings"
 
 	"github.com/ianlancetaylor/demangle"
 	flags "github.com/jessevdk/go-flags"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/sirupsen/logrus"
 )
 
 var DemangledNamesMap = make(map[int64]string)
@@ -71,13 +70,13 @@ func GetMemcpyEvents(db *sqlx.DB) []*Event {
 	for _, activity := range activities {
 		event := NewEvent()
 
-		copyKind := ParseMap(activity.CopyKind, ActivityMemcpyKind)
+		copyKind := FindInMap(activity.CopyKind, ActivityMemcpyKind)
 
-		flags := fmt.Sprintf("%v", activity.Flags)
-		switch activity.CopyKind {
-		case 0:
-			flags = "sync"
-		case 1:
+		// CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC = 1<<0
+		// Indicates the activity represents an asynchronous memcpy operation.
+		// Valid for CUPTI_ACTIVITY_KIND_MEMCPY.
+		flags := "sync"
+		if activity.Flags&(1<<0) == 1 {
 			flags = "async"
 		}
 
@@ -88,8 +87,8 @@ func GetMemcpyEvents(db *sqlx.DB) []*Event {
 		event.Duration = activity.End - activity.Start
 		event.TID = fmt.Sprintf("MemCpy (%v)", copyKind)
 		event.PID = fmt.Sprintf("[%v:%v] Overview", activity.DeviceID, activity.ContextID)
-		event.Args["Src"] = ParseMap(activity.SrcKind, ActivityMemoryKind)
-		event.Args["Dst"] = ParseMap(activity.DstKind, ActivityMemoryKind)
+		event.Args["Src"] = FindInMap(activity.SrcKind, ActivityMemoryKind)
+		event.Args["Dst"] = FindInMap(activity.DstKind, ActivityMemoryKind)
 		events = append(events, event)
 
 	}
@@ -108,13 +107,13 @@ func GetMemcpy2Events(db *sqlx.DB) []*Event {
 	for _, activity := range activities {
 		event := NewEvent()
 
-		copyKind := ParseMap(activity.CopyKind, ActivityMemcpyKind)
+		copyKind := FindInMap(activity.CopyKind, ActivityMemcpyKind)
 
-		flags := fmt.Sprintf("%v", activity.Flags)
-		switch activity.CopyKind {
-		case 0:
-			flags = "sync"
-		case 1:
+		// CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC = 1<<0
+		// Indicates the activity represents an asynchronous memcpy operation.
+		// Valid for CUPTI_ACTIVITY_KIND_MEMCPY.
+		flags := "sync"
+		if activity.Flags&(1<<0) == 1 {
 			flags = "async"
 		}
 
@@ -215,7 +214,7 @@ func GetSynchronizationEvents(db *sqlx.DB) []*Event {
 
 	for _, activity := range activities {
 		event := NewEvent()
-		event.Name = ParseMap(activity.Type, ActivitySynchronizationType)
+		event.Name = FindInMap(activity.Type, ActivitySynchronizationType)
 		event.Type = "X"
 		event.Category = "cuda"
 		event.Timestamp = activity.Start
@@ -231,23 +230,39 @@ func GetSynchronizationEvents(db *sqlx.DB) []*Event {
 	return events
 }
 
+var log = logrus.New()
+
 func main() {
 
 	var opts struct {
-		OutputFile string `short:"o" long:"output" default:"[nvvpfile].json" description:"output file for Chrome" required:"false" name:"output file"`
+		OutputFile string `short:"o" long:"output" default:"[nvvpfile].json" description:"output file for Chrome tracing" required:"false" name:"output file"`
+		Verbose    bool   `short:"v" long:"verbose"  description:"verbose logging" required:"false" name:"verbose"`
+		Pretty     bool   `short:"p" long:"pretty"  description:"ident and prettify JSON output" required:"false" name:"pretty"`
 		Override   bool   `short:"f"  description:"override output file if exists" required:"false" name:"override"`
 		Args       struct {
-			NVVPFile string `positional-arg-name:"nvvpfile" description:"output from nvprof, e.g., 'nvprof -o main.nvvp ./main'"`
+			NVVPFile string `positional-arg-name:"file" description:"output from nvprof, e.g., 'nvprof -o [file] [your-app]'"`
 		} `positional-args:"true" required:"1"`
 	}
+
+	log.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: false,
+	})
+	log.SetOutput(os.Stdout)
+
 	_, err := flags.Parse(&opts)
 	if err == nil {
+
+		if opts.Verbose {
+			log.SetLevel(logrus.DebugLevel)
+		}
+
 		if _, err := os.Stat(opts.Args.NVVPFile); os.IsNotExist(err) {
 			log.Fatalln(err)
 		}
 
 		if opts.OutputFile == "[nvvpfile].json" {
 			opts.OutputFile = fmt.Sprintf("%s.json", strings.TrimSuffix(filepath.Base(opts.Args.NVVPFile), filepath.Ext(opts.Args.NVVPFile)))
+			log.Debugln("Set output to", opts.OutputFile)
 		}
 
 		if _, err := os.Stat(opts.OutputFile); !os.IsNotExist(err) {
@@ -256,6 +271,7 @@ func main() {
 			}
 		}
 
+		log.Debugln("Open sqlite3 database", opts.Args.NVVPFile)
 		db, err := sqlx.Connect("sqlite3", opts.Args.NVVPFile)
 		if err != nil {
 			log.Fatalln(err)
@@ -267,13 +283,15 @@ func main() {
 			log.Fatalln(err)
 		}
 
+		log.Debugln("Demangle Names")
 		for _, p := range stringTable {
-
 			demangledValue, err := demangle.ToString(p.Value)
 			if err == nil {
 				DemangledNamesMap[p.ID] = demangledValue
+				log.Debugf("Demangle '%s' to '%s'\n", p.Value, demangledValue)
 			} else {
 				DemangledNamesMap[p.ID] = p.Value
+				log.Debugf("Cannot demangle '%s'\n", p.Value)
 			}
 		}
 
@@ -292,8 +310,13 @@ func main() {
 		info.Events = append(info.Events, GetConcurrentKernelEvents(db)...)
 		info.Events = append(info.Events, GetSynchronizationEvents(db)...)
 
+		var file []byte
 		// dump for Google Chrome
-		file, _ := json.MarshalIndent(info, "", " ")
+		if opts.Pretty {
+			file, _ = json.MarshalIndent(info, "", " ")
+		} else {
+			file, _ = json.Marshal(info)
+		}
 		_ = ioutil.WriteFile(opts.OutputFile, file, 0644)
 	}
 }
