@@ -30,7 +30,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var DemangledNamesMap = make(map[int64]string)
+var StringLUT = make(map[int64]string)
+var Info *Infomation
 
 func GetRuntimeEvents(db *sqlx.DB) []*Event {
 	activities := []CuptiActivityKindRuntime{}
@@ -86,7 +87,7 @@ func GetMemcpyEvents(db *sqlx.DB) []*Event {
 		event.Timestamp = activity.Start
 		event.Duration = activity.End - activity.Start
 		event.TID = fmt.Sprintf("MemCpy (%v)", copyKind)
-		event.PID = fmt.Sprintf("[%v:%v] Overview", activity.DeviceID, activity.ContextID)
+		event.PID = fmt.Sprintf("[%v:%v] %s", activity.DeviceID, activity.ContextID, nameForDevice(activity.DeviceID))
 		event.Args["Src"] = FindInMap(activity.SrcKind, ActivityMemoryKind)
 		event.Args["Dst"] = FindInMap(activity.DstKind, ActivityMemoryKind)
 		events = append(events, event)
@@ -123,7 +124,7 @@ func GetMemcpy2Events(db *sqlx.DB) []*Event {
 		event.Timestamp = activity.Start
 		event.Duration = activity.End - activity.Start
 		event.TID = fmt.Sprintf("MemCpy (%v) %v -> %v", copyKind, activity.SrcDeviceID, activity.DstDeviceID)
-		event.PID = fmt.Sprintf("[%v:%v] Overview", activity.DeviceID, activity.ContextID)
+		event.PID = fmt.Sprintf("[%v:%v] %s", activity.DeviceID, activity.ContextID, nameForDevice(activity.DeviceID))
 		events = append(events, event)
 	}
 
@@ -147,12 +148,16 @@ func GetMemsetEvents(db *sqlx.DB) []*Event {
 		event.Category = "cuda"
 		event.Timestamp = activity.Start
 		event.Duration = activity.End - activity.Start
-		event.PID = fmt.Sprintf("[%v:%v] Overview", activity.DeviceID, activity.ContextID)
+		event.PID = fmt.Sprintf("[%v:%v] %s", activity.DeviceID, activity.ContextID, nameForDevice(activity.DeviceID))
 		event.Args["bytes"] = fmt.Sprintf("%v", activity.Bytes)
 		events = append(events, event)
 	}
 
 	return events
+}
+
+func nameForDevice(devID int64) string {
+	return StringLUT[Info.Meta.Devices[devID].Name]
 }
 
 func GetConcurrentKernelEvents(db *sqlx.DB) []*Event {
@@ -167,7 +172,7 @@ func GetConcurrentKernelEvents(db *sqlx.DB) []*Event {
 		event := NewEvent()
 		event.Name = fmt.Sprintf("<unkown %v>", activity.Name)
 
-		if val, ok := DemangledNamesMap[activity.Name]; ok {
+		if val, ok := StringLUT[activity.Name]; ok {
 			event.Name = val
 		}
 
@@ -177,7 +182,7 @@ func GetConcurrentKernelEvents(db *sqlx.DB) []*Event {
 		event.Timestamp = activity.Start
 		event.Duration = activity.End - activity.Start
 
-		event.PID = fmt.Sprintf("[%v:%v] Overview", activity.DeviceID, activity.ContextID)
+		event.PID = fmt.Sprintf("[%v:%v] %s", activity.DeviceID, activity.ContextID, nameForDevice(activity.DeviceID))
 		event.Args["Grid"] = fmt.Sprintf("[%v,%v,%v]", activity.GridX, activity.GridY, activity.GridZ)
 		event.Args["Block"] = fmt.Sprintf("[%v,%v,%v]", activity.BlockX, activity.BlockY, activity.BlockZ)
 		event.Args["SharedMemoryConfig"] = fmt.Sprintf("%v", activity.SharedMemoryConfig)
@@ -287,41 +292,46 @@ func main() {
 		for _, p := range stringTable {
 			demangledValue, err := demangle.ToString(p.Value)
 			if err == nil {
-				DemangledNamesMap[p.ID] = demangledValue
+				StringLUT[p.ID] = demangledValue
 				log.Infof("  - demangle '%s' to '%s'\n", p.Value, demangledValue)
 			} else {
-				DemangledNamesMap[p.ID] = p.Value
+				StringLUT[p.ID] = p.Value
 				log.Infof("  - cannot demangle '%s'\n", p.Value)
 			}
 		}
 
-		info := NewInfomation()
+		Info = NewInfomation()
 
-		err = db.Select(&info.Meta.Devices, "SELECT * FROM CUPTI_ACTIVITY_KIND_DEVICE")
+		log.Infof("Query Devices\n")
+		err = db.Select(&Info.Meta.Devices, "SELECT * FROM CUPTI_ACTIVITY_KIND_DEVICE")
 		if err != nil {
 			log.Fatalln(err)
+		}
+		for _, device := range Info.Meta.Devices {
+			log.Infof("  - found device '%s'\n", StringLUT[device.Name])
+
 		}
 
 		// runtime events
 		log.Infof("Query RuntimeEvents\n")
-		info.Events = append(info.Events, GetRuntimeEvents(db)...)
+		Info.Events = append(Info.Events, GetRuntimeEvents(db)...)
 		log.Infof("Query MemcpyEvents\n")
-		info.Events = append(info.Events, GetMemcpyEvents(db)...)
+		Info.Events = append(Info.Events, GetMemcpyEvents(db)...)
 		log.Infof("Query Memcpy2Events\n")
-		info.Events = append(info.Events, GetMemcpy2Events(db)...)
+		Info.Events = append(Info.Events, GetMemcpy2Events(db)...)
 		log.Infof("Query MemsetEvents\n")
-		info.Events = append(info.Events, GetMemsetEvents(db)...)
+		Info.Events = append(Info.Events, GetMemsetEvents(db)...)
 		log.Infof("Query ConcurrentKernelEvents\n")
-		info.Events = append(info.Events, GetConcurrentKernelEvents(db)...)
+		Info.Events = append(Info.Events, GetConcurrentKernelEvents(db)...)
 		log.Infof("Query SynchronizationEvents\n")
-		info.Events = append(info.Events, GetSynchronizationEvents(db)...)
+		Info.Events = append(Info.Events, GetSynchronizationEvents(db)...)
 
 		var file []byte
 		// dump for Google Chrome
 		if opts.Pretty {
-			file, _ = json.MarshalIndent(info, "", " ")
+			file, _ = json.MarshalIndent(Info, "", " ")
 		} else {
-			file, _ = json.Marshal(info)
+			file, _ = json.Marshal(Info)
 		}
 		_ = ioutil.WriteFile(opts.OutputFile, file, 0644)
 	}
