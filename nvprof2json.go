@@ -36,7 +36,7 @@ func GetRuntimeEvents(db *sqlx.DB) []*Event {
 	activities := []CuptiActivityKindRuntime{}
 	err := db.Select(&activities, "SELECT * FROM CUPTI_ACTIVITY_KIND_RUNTIME")
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 	events := []*Event{}
 
@@ -63,7 +63,7 @@ func GetMemcpyEvents(db *sqlx.DB) []*Event {
 	activities := []CuptiActivityKindMemcpy{}
 	err := db.Select(&activities, "SELECT * FROM CUPTI_ACTIVITY_KIND_MEMCPY")
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 	events := []*Event{}
 
@@ -100,7 +100,7 @@ func GetMemcpy2Events(db *sqlx.DB) []*Event {
 	activities := []CuptiActivityKindMemcpy2{}
 	err := db.Select(&activities, "SELECT * FROM CUPTI_ACTIVITY_KIND_MEMCPY2")
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 	events := []*Event{}
 
@@ -134,7 +134,7 @@ func GetMemsetEvents(db *sqlx.DB) []*Event {
 	activities := []CuptiActivityKindMemset{}
 	err := db.Select(&activities, "SELECT * FROM CUPTI_ACTIVITY_KIND_MEMSET")
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 	events := []*Event{}
 
@@ -159,7 +159,7 @@ func GetConcurrentKernelEvents(db *sqlx.DB) []*Event {
 	activities := []CuptiActivityKindConcurrentKernel{}
 	err := db.Select(&activities, "SELECT * FROM CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL")
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 	events := []*Event{}
 
@@ -208,7 +208,7 @@ func GetSynchronizationEvents(db *sqlx.DB) []*Event {
 	activities := []CuptiActivityKindSynchronization{}
 	err := db.Select(&activities, "SELECT * FROM CUPTI_ACTIVITY_KIND_SYNCHRONIZATION")
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 	events := []*Event{}
 
@@ -253,7 +253,7 @@ func main() {
 	if err == nil {
 
 		if opts.Verbose {
-			log.SetLevel(logrus.DebugLevel)
+			log.SetLevel(logrus.InfoLevel)
 		}
 
 		if _, err := os.Stat(opts.Args.NVVPFile); os.IsNotExist(err) {
@@ -262,7 +262,7 @@ func main() {
 
 		if opts.OutputFile == "[nvvpfile].json" {
 			opts.OutputFile = fmt.Sprintf("%s.json", strings.TrimSuffix(filepath.Base(opts.Args.NVVPFile), filepath.Ext(opts.Args.NVVPFile)))
-			log.Debugln("Set output to", opts.OutputFile)
+			log.Infoln("Set output to", opts.OutputFile)
 		}
 
 		if _, err := os.Stat(opts.OutputFile); !os.IsNotExist(err) {
@@ -271,7 +271,7 @@ func main() {
 			}
 		}
 
-		log.Debugln("Open sqlite3 database", opts.Args.NVVPFile)
+		log.Infoln("Open sqlite3 database", opts.Args.NVVPFile)
 		db, err := sqlx.Connect("sqlite3", opts.Args.NVVPFile)
 		if err != nil {
 			log.Fatalln(err)
@@ -283,15 +283,15 @@ func main() {
 			log.Fatalln(err)
 		}
 
-		log.Debugln("Demangle Names")
+		log.Infoln("Demangle Names")
 		for _, p := range stringTable {
 			demangledValue, err := demangle.ToString(p.Value)
 			if err == nil {
 				DemangledNamesMap[p.ID] = demangledValue
-				log.Debugf("Demangle '%s' to '%s'\n", p.Value, demangledValue)
+				log.Infof("  - demangle '%s' to '%s'\n", p.Value, demangledValue)
 			} else {
 				DemangledNamesMap[p.ID] = p.Value
-				log.Debugf("Cannot demangle '%s'\n", p.Value)
+				log.Infof("  - cannot demangle '%s'\n", p.Value)
 			}
 		}
 
@@ -303,11 +303,17 @@ func main() {
 		}
 
 		// runtime events
+		log.Infof("Query RuntimeEvents\n")
 		info.Events = append(info.Events, GetRuntimeEvents(db)...)
+		log.Infof("Query MemcpyEvents\n")
 		info.Events = append(info.Events, GetMemcpyEvents(db)...)
+		log.Infof("Query Memcpy2Events\n")
 		info.Events = append(info.Events, GetMemcpy2Events(db)...)
+		log.Infof("Query MemsetEvents\n")
 		info.Events = append(info.Events, GetMemsetEvents(db)...)
+		log.Infof("Query ConcurrentKernelEvents\n")
 		info.Events = append(info.Events, GetConcurrentKernelEvents(db)...)
+		log.Infof("Query SynchronizationEvents\n")
 		info.Events = append(info.Events, GetSynchronizationEvents(db)...)
 
 		var file []byte
